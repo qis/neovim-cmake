@@ -18,7 +18,7 @@ function cmake.configure(...)
     return
   end
 
-  local args = vim.list_extend({ '-B', project_config:get_build_dir().filename, '-D', 'CMAKE_BUILD_TYPE=' .. project_config.json.build_type }, config.configure_args)
+  local args = vim.list_extend({ '-B', project_config:get_build_dir().filename }, config.configure_args)
   vim.list_extend(args, { ... })
   return utils.run(config.cmake_executable, args, { copy_compile_commands_from = project_config:get_build_dir() })
 end
@@ -30,14 +30,21 @@ function cmake.build(...)
     return
   end
 
-  local args = vim.list_extend({ '--build', project_config:get_build_dir().filename, '--target', project_config.json.current_target }, config.build_args)
+  local args = vim.list_extend({
+    '--build', project_config:get_build_dir().filename,
+    '--config', project_config.json.build_type,
+    '--target', project_config.json.current_target,
+  }, config.build_args)
   vim.list_extend(args, { ... })
   return utils.run(config.cmake_executable, args, { copy_compile_commands_from = project_config:get_build_dir() })
 end
 
 function cmake.build_all(...)
   local project_config = ProjectConfig.new()
-  local args = vim.list_extend({ '--build', project_config:get_build_dir().filename }, config.build_args)
+  local args = vim.list_extend({
+    '--build', project_config:get_build_dir().filename
+    '--config', project_config.json.build_type,
+  }, config.build_args)
   vim.list_extend(args, { ... })
   return utils.run(config.cmake_executable, args, { copy_compile_commands_from = project_config:get_build_dir() })
 end
@@ -50,7 +57,7 @@ function cmake.run(...)
   end
 
   vim.list_extend(target_args, { ... })
-  return utils.run(target.filename, target_args, { cwd = target_dir.filename, force_quickfix = true })
+  return utils.run((target_dir / target):absolute(), target_args, { cwd = target_dir:absolute(), force_quickfix = true })
 end
 
 function cmake.debug(...)
@@ -72,9 +79,9 @@ function cmake.debug(...)
 
   local dap_config = {
     name = project_config.json.current_target,
-    program = target.filename,
+    program = (target_dir / target):absolute(),
+    cwd = target_dir:absolute(),
     args = target_args,
-    cwd = target_dir.filename,
   }
   dap.run(vim.tbl_extend('force', dap_config, config.dap_configuration))
   vim.api.nvim_command('cclose')

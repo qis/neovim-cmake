@@ -120,19 +120,13 @@ function ProjectConfig:get_current_target()
     return nil
   end
 
+  local target_dir = self:get_build_dir()
   local target = Path:new(target_info['artifacts'][1]['path'])
-  if not target:is_absolute() then
-    target = self:get_build_dir() / target
-  end
-  if not target:is_file() then
-    utils.notify('Selected target is not built: ' .. target.filename, vim.log.levels.ERROR)
+  if not (target_dir / target):is_file() then
+    utils.notify('Selected target is not built: ' .. target_dir.filename .. '/' .. target.filename, vim.log.levels.ERROR)
     return nil
   end
 
-  local target_dir = self.json.run_dir
-  if target_dir == nil then
-    target_dir = target:parent()
-  end
   local target_args = utils.split_args(self.json.args[target_info['name']]) -- Try to split args for compatibility with the previous version
   return target_dir, target, target_args
 end
