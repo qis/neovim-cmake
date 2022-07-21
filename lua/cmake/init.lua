@@ -7,12 +7,21 @@ local Job = require('plenary.job')
 local ProjectConfig = require('cmake.project_config')
 local cmake = {}
 
+function cmake.get_project_config()
+  local project_config = ProjectConfig.new()
+  if project_config:get_build_dir():is_dir() and not project_config.json.current_target then
+    cmake.select_target()
+    project_config = ProjectConfig.new()
+  end
+  return project_config
+end
+
 function cmake.setup(values)
   setmetatable(config, { __index = vim.tbl_deep_extend('force', config.defaults, values) })
 end
 
 function cmake.configure(...)
-  local project_config = ProjectConfig.new()
+  local project_config = cmake.get_project_config()
   project_config:get_build_dir():mkdir({ parents = true })
   if not project_config:make_query_files() then
     return
@@ -20,16 +29,16 @@ function cmake.configure(...)
 
   local args = vim.list_extend({ '-B', project_config:get_build_dir().filename }, config.configure_args)
   vim.list_extend(args, { ... })
-  return utils.run(config.cmake_executable, args, { copy_compile_commands_from = project_config:get_build_dir() })
+  local job = utils.run(config.cmake_executable, args, { copy_compile_commands_from = project_config:get_build_dir() })
+  if job ~= nil then
+    job:after_success(vim.schedule_wrap(function()
+      vim.cmd("LspReload")
+    end))
+  end
 end
 
 function cmake.build(...)
-  local project_config = ProjectConfig.new()
-  if not project_config.json.current_target then
-    utils.notify('You need to select target first', vim.log.levels.ERROR)
-    return
-  end
-
+  local project_config = cmake.get_project_config()
   local args = vim.list_extend({
     '--build', project_config:get_build_dir().filename,
     '--config', project_config.json.build_type,
@@ -40,9 +49,9 @@ function cmake.build(...)
 end
 
 function cmake.build_all(...)
-  local project_config = ProjectConfig.new()
+  local project_config = cmake.get_project_config()
   local args = vim.list_extend({
-    '--build', project_config:get_build_dir().filename
+    '--build', project_config:get_build_dir().filename,
     '--config', project_config.json.build_type,
   }, config.build_args)
   vim.list_extend(args, { ... })
@@ -50,7 +59,7 @@ function cmake.build_all(...)
 end
 
 function cmake.run(...)
-  local project_config = ProjectConfig.new()
+  local project_config = cmake.get_project_config()
   local target_dir, target, target_args = project_config:get_current_target()
   if not target_dir or not target then
     return
@@ -65,7 +74,7 @@ function cmake.debug(...)
     return
   end
 
-  local project_config = ProjectConfig.new()
+  local project_config = cmake.get_project_config()
   if not project_config:validate_for_debugging() then
     return
   end
@@ -91,13 +100,14 @@ function cmake.debug(...)
 end
 
 function cmake.clean(...)
-  local project_config = ProjectConfig.new()
+  local project_config = cmake.get_project_config()
   local args = vim.list_extend({ '--build', project_config:get_build_dir().filename, '--target', 'clean' }, { ... })
   return utils.run(config.cmake_executable, args, { copy_compile_commands_from = project_config:get_build_dir() })
 end
 
 function cmake.build_and_run(...)
-  if not ProjectConfig.new():get_current_executable_info() then
+  local project_config = cmake.get_project_config()
+  if not project_config:get_current_executable_info() then
     return
   end
 
@@ -111,7 +121,7 @@ function cmake.build_and_run(...)
 end
 
 function cmake.build_and_debug(...)
-  local project_config = ProjectConfig.new()
+  local project_config = cmake.get_project_config()
   if not project_config:get_current_executable_info() or not project_config:validate_for_debugging() then
     return
   end
@@ -126,7 +136,7 @@ function cmake.build_and_debug(...)
 end
 
 function cmake.set_target_args()
-  local project_config = ProjectConfig.new()
+  local project_config = cmake.get_project_config()
   local current_target = project_config:get_current_executable_info()
   if not current_target then
     return
@@ -157,10 +167,10 @@ function cmake.open_build_dir()
   job:start()
 end
 
-function cmake.select_build_type()
+function cmake.select_config()
   -- Put selected build type first
   local project_config = ProjectConfig.new()
-  local types = { 'Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel' }
+  local types = { 'Debug', 'Release', 'MinSizeRel', 'RelWithDebInfo', 'Coverage' }
   for idx, type in ipairs(types) do
     if type == project_config.json.build_type then
       table.insert(types, 1, table.remove(types, idx))
@@ -168,7 +178,7 @@ function cmake.select_build_type()
     end
   end
 
-  vim.ui.select(types, { prompt = 'Select build type' }, function(build_type)
+  vim.ui.select(types, { prompt = 'Select config' }, function(build_type)
     if not build_type then
       return
     end

@@ -63,6 +63,11 @@ function ProjectConfig:get_codemodel_targets()
   end
   local codemodel = Path:new(found_files[1])
   local codemodel_json = vim.json.decode(codemodel:read())
+  for _, configuration in ipairs(codemodel_json['configurations']) do
+    if configuration.name == self.json.build_type then
+      return configuration.targets
+    end
+  end
   return codemodel_json['configurations'][1]['targets']
 end
 
@@ -133,8 +138,8 @@ end
 
 function ProjectConfig:validate_for_debugging()
   local build_type = self.json.build_type
-  if build_type ~= 'Debug' and build_type ~= 'RelWithDebInfo' then
-    utils.notify('For debugging you need to use Debug or RelWithDebInfo, but currently your build type is ' .. build_type, vim.log.levels.ERROR)
+  if build_type ~= 'Debug' and build_type ~= 'RelWithDebInfo' and build_type ~= 'Coverage' then
+    utils.notify('For debugging you need to use Debug, RelWithDebInfo or Coverage, but currently your build type is ' .. build_type, vim.log.levels.ERROR)
     return false
   end
   return true
